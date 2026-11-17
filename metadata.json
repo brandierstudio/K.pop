@@ -1,0 +1,6 @@
+{
+  "name": "K.Shop Pop — Try the Look Runway",
+  "description": "Six looks, styled head to toe. Explore the K.Shop Pop vibrant runway, isolate a look, and tap a pin to see the piece.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
