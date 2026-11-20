@@ -12,12 +12,13 @@ import {
   computeRingBodyPose,
   stepSpring,
 } from './runwayMath';
-import { RAIL_GARMENTS, RAIL_SHEETS, computeCropStyle } from '../data/railData';
+import { RAIL_GARMENTS } from '../data/railData';
+import { formatPrice, getCurrency, subscribeCurrency } from './currency';
 
 const DEFAULT_STARTING_BAG: BagEntry[] = [
-  { id: 9004002, quantity: 1 }, // Taupe Wool Blazer (M)
-  { id: 9005001, quantity: 1 }, // Champagne Bias Slip (S)
-  { id: 9002002, quantity: 1 }, // Ivory Belted Trench (M)
+  { id: 6101002, quantity: 1 }, // Al-Noor White Embroidered Kurta Set (M)
+  { id: 9001002, quantity: 1 }, // Noir Classic Nida Abaya (54)
+  { id: 9008002, quantity: 1 }, // Dusk Mauve Pearl-Cuff Abaya (54)
 ];
 
 class StylingBagController {
@@ -27,6 +28,9 @@ class StylingBagController {
 
   constructor() {
     this.load();
+    subscribeCurrency(() => {
+      this.render();
+    });
   }
 
   public load(): void {
@@ -156,7 +160,7 @@ class StylingBagController {
       emptyNote.className = 'bag-note';
       emptyNote.textContent = 'Your styling bag is empty. Choose a size beside a piece to save it.';
       itemsContainer.appendChild(emptyNote);
-      totalEl.textContent = '$0.00';
+      totalEl.textContent = formatPrice(0, getCurrency());
       if (exportBtn) exportBtn.disabled = true;
       if (checkoutBtn) checkoutBtn.disabled = true;
       return;
@@ -176,28 +180,18 @@ class StylingBagController {
       const thumbWrap = document.createElement('div');
       thumbWrap.className = 'drawer-thumb';
 
+      const img = document.createElement('img');
       if (typeof item.railGarmentK === 'number') {
         const gDef = RAIL_GARMENTS[item.railGarmentK];
-        if (gDef) {
-          const cropFace = document.createElement('div');
-          cropFace.className = 'drawer-crop-face';
-          const cropScale = 86 / Math.max(550, gDef.crops.front.h + 6);
-          const st = computeCropStyle(RAIL_SHEETS.front, gDef.crops.front, cropScale);
-          Object.assign(cropFace.style, st);
-          cropFace.style.left = '50%';
-          cropFace.style.top = '50%';
-          cropFace.style.transform = 'translate(-50%, -50%)';
-          thumbWrap.appendChild(cropFace);
-        }
+        img.src = gDef ? gDef.image : item.image;
       } else {
-        const img = document.createElement('img');
         img.src = item.image;
-        img.alt = item.name;
-        img.width = 76;
-        img.height = 96;
-        img.referrerPolicy = 'no-referrer';
-        thumbWrap.appendChild(img);
       }
+      img.alt = item.name;
+      img.width = 76;
+      img.height = 96;
+      img.referrerPolicy = 'no-referrer';
+      thumbWrap.appendChild(img);
 
       const details = document.createElement('div');
       details.className = 'drawer-details';

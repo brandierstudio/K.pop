@@ -20,24 +20,58 @@ import {
   findPerfumeVariantId,
 } from '../data/catalogData';
 import {
-  RAIL_SHEETS,
+  RAIL_CATEGORIES,
   RAIL_GARMENTS,
   RAIL_SEQUENCE,
   computeRailY,
-  computeCropStyle,
+  matchesRailCategory,
+  shortestRailIndexDelta,
+  wrapRailX,
 } from '../data/railData';
+import { formatPrice, PKR_EXCHANGE_RATE, setCurrency, getCurrency } from './currency';
 
-test('catalog has 6 looks and 21 unique products (8 Runway + 8 Rail + 5 Perfume) with zero external store links', () => {
+test('Islamic menswear catalog has 6 strictly synced looks (3/2/3/3/2/3 pieces) and 29 total products (16 Runway + 8 Abayas + 5 Perfumes)', () => {
   assert.equal(LOOKS.length, 6);
-  assert.equal(Object.keys(PRODUCTS_MAP).length, 21);
-  assert.equal(LOOKS[0].name, 'The City Edit');
-  assert.equal(LOOKS[1].name, 'Gallery Opening');
-  assert.equal(LOOKS[5].name, 'Studio Day');
-  assert.equal(PRODUCTS_MAP['tatum-5-orbit-copy'].price, 149);
-  assert.equal(PRODUCTS_MAP['tshirt'].price, 199);
-  assert.deepEqual(PRODUCTS_MAP['tshirt'].sizes, ['S', 'L', 'M', 'XL']);
-  assert.equal(PRODUCTS_MAP['rail-noir-tailored-blazer'].price, 690);
-  assert.equal(PRODUCTS_MAP['rail-oxblood-satin-gown'].price, 690);
+  assert.equal(Object.keys(PRODUCTS_MAP).length, 29);
+
+  // Exact worn item counts per model (Looks 02 & 05 are bareheaded -> no topi)
+  const expectedCounts = [3, 2, 3, 3, 2, 3];
+  LOOKS.forEach((look, idx) => {
+    assert.equal(
+      look.items.length,
+      expectedCounts[idx],
+      `Look ${look.numberFormatted} (${look.name}) item count mismatch`
+    );
+    assert.equal(look.pins.length, look.items.length, `Look ${look.numberFormatted} pin count mismatch`);
+    assert.equal(look.piecesLabel, `${expectedCounts[idx]} pieces`);
+
+    // Verify 1:1 pin-to-product synchronization & transparent PNG product cutouts
+    look.items.forEach((itemCfg, i) => {
+      const product = PRODUCTS_MAP[itemCfg.productId];
+      assert.ok(product, `Missing product ${itemCfg.productId}`);
+      assert.ok(product.image.endsWith('.png'), `Runway product ${product.id} must use transparent PNG cutout`);
+      assert.ok(Boolean(product.details), `Runway product ${product.id} should include expandable details`);
+      const pin = look.pins[i];
+      assert.equal(pin.number, itemCfg.cardNumber);
+      assert.equal(pin.productName, product.name);
+    });
+
+    // Verify bundle price is exact 10% off compareAt sum of worn items
+    const sum = look.items.reduce((acc, it) => acc + PRODUCTS_MAP[it.productId].price, 0);
+    assert.equal(look.compareAtAmount, sum);
+    assert.equal(look.bundleAmount, Number((sum * 0.9).toFixed(2)));
+    assert.equal(look.compareAtPrice, `$${sum.toFixed(2)}`);
+    assert.equal(look.bundlePrice, `$${(sum * 0.9).toFixed(2)}`);
+  });
+
+  // Verify bareheaded models (Look 02 & Look 05) do NOT include any topi product
+  for (const bareIdx of [1, 4]) {
+    const ids = LOOKS[bareIdx].items.map((it) => it.productId);
+    assert.ok(
+      ids.every((id) => !id.startsWith('topi-')),
+      `Bareheaded Look ${bareIdx + 1} must not contain a topi`
+    );
+  }
 
   // Verify zero external Shopify links exist anywhere in the catalog
   for (const prod of Object.values(PRODUCTS_MAP)) {
@@ -48,24 +82,44 @@ test('catalog has 6 looks and 21 unique products (8 Runway + 8 Rail + 5 Perfume)
   }
 });
 
-test('The Rail data has 8 unique silhouettes, 20 hanging pieces, and exact quadratic curve & crop math', () => {
+test('The Rail modest abaya collection has 8 unique abayas, 20 hanging positions, multi-tag filters, and exact quadratic curve math', () => {
   assert.equal(RAIL_GARMENTS.length, 8);
   assert.equal(RAIL_SEQUENCE.length, 20);
+  assert.ok(RAIL_CATEGORIES.includes('Prayer Wear'));
+  assert.ok(RAIL_CATEGORIES.includes('Open Abaya'));
+  assert.ok(RAIL_CATEGORIES.includes('Closed Abaya'));
+
+  // Every abaya has local transparent PNG silhouette, transparent PNG Check Fabric cutout, care note, and 52-60 length sizes
+  for (const g of RAIL_GARMENTS) {
+    assert.ok(g.image.startsWith('/assets/modest/abayas/abaya-') && g.image.endsWith('.png'));
+    assert.ok(g.detailImage.endsWith('-detail.png'));
+    assert.ok(g.care.length > 0);
+    assert.deepEqual(g.sizes, ['52', '54', '56', '58', '60']);
+  }
+
+  // Multi-tag category matching
+  assert.equal(
+    RAIL_GARMENTS.filter((g) => matchesRailCategory(g, 'All')).length,
+    8
+  );
+  assert.ok(
+    RAIL_GARMENTS.filter((g) => matchesRailCategory(g, 'Open Abaya')).length >= 3
+  );
+  assert.ok(
+    RAIL_GARMENTS.filter((g) => matchesRailCategory(g, 'Prayer Wear')).length >= 1
+  );
+  assert.ok(
+    RAIL_GARMENTS.filter((g) => matchesRailCategory(g, 'Soft Tones')).length >= 2
+  );
 
   // Quadratic curve endpoints & midpoint
   const W = 1440;
-  const railTop = 240;
-  const sag = 55;
+  const railTop = 280;
+  const sag = 68;
   const u = 1;
-  assert.equal(computeRailY(0, W, railTop, sag, u), 240);
-  assert.equal(computeRailY(W, W, railTop, sag, u), 240);
-  assert.equal(computeRailY(W / 2, W, railTop, sag, u), 295);
-
-  // Crop style calculation for k=0 (Noir Tailored Blazer) side view at scale 0.5
-  const crop = computeCropStyle(RAIL_SHEETS.side, RAIL_GARMENTS[0].crops.side, 0.5);
-  assert.equal(crop.width, '170.00px');
-  assert.equal(crop.left, '-85.00px');
-  assert.equal(crop.height, `${((619 + 6) * 0.5).toFixed(2)}px`);
+  assert.equal(computeRailY(0, W, railTop, sag, u), 280);
+  assert.equal(computeRailY(W, W, railTop, sag, u), 280);
+  assert.equal(computeRailY(W / 2, W, railTop, sag, u), 348);
 });
 
 test('wrapN and shortestLoopDelta wrap circular carousel indices properly', () => {
@@ -86,11 +140,9 @@ test('computeRingBodyPose matches exact slot 0 and slot 1 geometry on desktop', 
   assert.equal(frontMoving.opacity, 1);
   assert.equal(frontMoving.z, 1080);
 
-  // At rest (still=true), front body drops to opacity 0 so hero takes over
   const frontStill = computeRingBodyPose(0, 0, W, H, false, true, 1.08, 12);
   assert.equal(frontStill.opacity, 0);
 
-  // Slot +1
   const slot1 = computeRingBodyPose(1, 0, W, H, false, true, 1.08, 12);
   assert.ok(Math.abs(slot1.scale - 0.952) < 0.01);
   assert.ok(Math.abs(slot1.blur - 1.8) < 0.01);
@@ -109,17 +161,17 @@ test('stepSpring converges critically damped spring towards target', () => {
   assert.equal(vel, 0);
 });
 
-test('styling bag logic adds, increments, steps quantity, resolves, and formats shortlist export', () => {
-  const sanitized = sanitizeBagEntries([{ id: 57015167025457, quantity: 1 }, { bad: true }]);
+test('unified styling bag handles Menswear Runway + Abaya Rail + quantity steps + shortlist export', () => {
+  const sanitized = sanitizeBagEntries([{ id: 6101002, quantity: 1 }, { bad: true }]);
   assert.equal(sanitized.length, 1);
 
-  const afterSingle = addItemsToBagEntries([], [{ id: 57015167025457, quantity: 1 }]);
+  const afterSingle = addItemsToBagEntries([], [{ id: 6101002, quantity: 1 }]);
   assert.equal(afterSingle.toastMessage, 'Piece saved to your styling bag');
   assert.equal(afterSingle.entries.length, 1);
 
   const afterLook = addItemsToBagEntries(afterSingle.entries, [
-    { id: 57015167025457, quantity: 1 },
-    { id: 9001002, quantity: 1 }, // Noir Tailored Blazer (M) from The Rail
+    { id: 6101002, quantity: 1 }, // Al-Noor White Embroidered Kurta Set (M) $165
+    { id: 9001002, quantity: 1 }, // Noir Classic Nida Abaya (54) $145
   ]);
   assert.equal(afterLook.toastMessage, 'Look saved to your styling bag');
   assert.equal(afterLook.entries.length, 2);
@@ -127,22 +179,21 @@ test('styling bag logic adds, increments, steps quantity, resolves, and formats 
 
   const resolved = resolveBagEntries(afterLook.entries);
   assert.equal(resolved.totalQuantity, 3);
-  assert.equal(resolved.subtotal, 149 * 2 + 690);
-  assert.equal(resolved.subtotalFormatted, 'Reference subtotal $988.00');
+  assert.equal(resolved.subtotal, 165 * 2 + 145);
+  assert.equal(resolved.subtotalFormatted, 'Reference subtotal $475.00');
   assert.equal(resolved.items[1].railGarmentK, 0);
 
-  // Test quantity stepper decrement and removal at 0
-  const steppedDown = updateBagEntryQuantity(afterLook.entries, 57015167025457, -1);
+  const steppedDown = updateBagEntryQuantity(afterLook.entries, 6101002, -1);
   assert.equal(steppedDown[0].quantity, 1);
-  const removed = updateBagEntryQuantity(steppedDown, 57015167025457, -1);
+  const removed = updateBagEntryQuantity(steppedDown, 6101002, -1);
   assert.equal(removed.length, 1);
 
   const txt = formatShortlistExport(resolved.items);
   assert.ok(txt.includes('RUNWAY — STYLING SHORTLIST'));
-  assert.ok(txt.includes('Noir Tailored Blazer · Size M · Quantity 1'));
+  assert.ok(txt.includes('Noir Classic Nida Abaya · Size 54 · Quantity 1'));
 });
 
-test('Perfume Showroom catalog supports all 5 bottles, 50/100/150 ml size pricing, and unified bag totals', () => {
+test('Perfume Showroom catalog remains 100% preserved across all 5 bottles and 50/100/150 ml pricing', () => {
   assert.equal(PERFUME_CATALOG_DEFS.length, 5);
   assert.equal(perfumePriceForSize(210, 50), 175);
   assert.equal(perfumePriceForSize(210, 100), 210);
@@ -167,3 +218,35 @@ test('Perfume Showroom catalog supports all 5 bottles, 50/100/150 ml size pricin
   assert.equal(resolved.totalFormatted, '$785.00');
 });
 
+test('infinite continuous rail math wraps smoothly across loop boundaries in both directions', () => {
+  const W = 1440;
+  const loopW = 2520; // 20 slots * 126px
+  // Center remains unchanged
+  assert.equal(wrapRailX(720, loopW, W), 720);
+  // Scrolling far right wraps cleanly back into [center - loopW/2, center + loopW/2)
+  const wrappedNeg = wrapRailX(720 - loopW - 100, loopW, W);
+  assert.equal(wrappedNeg, 620);
+  const wrappedPos = wrapRailX(720 + loopW + 100, loopW, W);
+  assert.equal(wrappedPos, 820);
+
+  // Circular neighbor index delta across piece 0 and piece 19
+  assert.equal(shortestRailIndexDelta(0, 19, 20), -1);
+  assert.equal(shortestRailIndexDelta(19, 0, 20), 1);
+  assert.equal(shortestRailIndexDelta(0, 1, 20), 1);
+  assert.equal(shortestRailIndexDelta(0, 18, 20), -2);
+});
+
+test('USD and PKR currency formatting converts consistently across Runway, Rail, Perfume, and Cart Drawer', () => {
+  assert.equal(getCurrency(), 'USD');
+  assert.equal(formatPrice(145, 'USD'), '$145.00');
+  assert.equal(formatPrice(145, 'USD', true), '$145');
+  assert.equal(formatPrice(145, 'PKR'), `PKR ${(145 * PKR_EXCHANGE_RATE).toLocaleString('en-US')}`);
+  assert.equal(formatPrice(145, 'PKR', true), `Rs ${(145 * PKR_EXCHANGE_RATE).toLocaleString('en-US')}`);
+
+  setCurrency('PKR');
+  assert.equal(getCurrency(), 'PKR');
+  const resolvedPKR = resolveBagEntries([{ id: 6101002, quantity: 1 }], NATIVE_CATALOG, 'PKR');
+  assert.equal(resolvedPKR.totalFormatted, `PKR ${(165 * PKR_EXCHANGE_RATE).toLocaleString('en-US')}`);
+  setCurrency('USD');
+  assert.equal(getCurrency(), 'USD');
+});

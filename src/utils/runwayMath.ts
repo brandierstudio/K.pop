@@ -1,4 +1,5 @@
 import { NATIVE_CATALOG } from '../data/catalogData';
+import { CurrencyCode, formatPrice, getCurrency } from './currency';
 
 export interface BagEntry {
   id: number;
@@ -237,7 +238,8 @@ export function updateBagEntryQuantity(
 
 export function resolveBagEntries(
   entries: BagEntry[],
-  catalog = NATIVE_CATALOG
+  catalog = NATIVE_CATALOG,
+  currency: CurrencyCode = getCurrency()
 ): { items: ResolvedBagItem[]; totalQuantity: number; subtotal: number; subtotalFormatted: string; totalFormatted: string } {
   validateCatalog(catalog);
   const items: ResolvedBagItem[] = [];
@@ -260,8 +262,8 @@ export function resolveBagEntries(
       size,
       price: unitPrice,
       lineTotal,
-      priceFormatted: formatMoneyUSD(unitPrice),
-      lineTotalFormatted: formatMoneyUSD(lineTotal),
+      priceFormatted: formatPrice(unitPrice, currency),
+      lineTotalFormatted: formatPrice(lineTotal, currency),
       image: found.product.image,
       url: found.product.url,
       railGarmentK: (found.product as { railGarmentK?: number }).railGarmentK,
@@ -272,8 +274,8 @@ export function resolveBagEntries(
     items,
     totalQuantity,
     subtotal,
-    subtotalFormatted: subtotal > 0 ? `Reference subtotal ${formatMoneyUSD(subtotal)}` : '',
-    totalFormatted: formatMoneyUSD(subtotal),
+    subtotalFormatted: subtotal > 0 ? `Reference subtotal ${formatPrice(subtotal, currency)}` : '',
+    totalFormatted: formatPrice(subtotal, currency),
   };
 }
 

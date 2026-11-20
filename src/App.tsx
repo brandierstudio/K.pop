@@ -1,10 +1,17 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { LOOKS, PRODUCTS_MAP, findPerfumeVariantId, setProductImage } from './data/catalogData';
 import {
   registerRunwayCustomElement,
   initBagDialogBindings,
   getBagController,
 } from './utils/runwayElement';
+import {
+  CurrencyCode,
+  formatPrice,
+  getCurrency,
+  setCurrency,
+  subscribeCurrency,
+} from './utils/currency';
 import RailSection from './components/RailSection';
 import PerfumeShowroom, { KP5_IMAGE_ASSETS, demoPerfumes } from './components/PerfumeShowroom.jsx';
 
@@ -20,14 +27,14 @@ registerRunwayCustomElement();
 const SECTION_ID = 'Runway-template--28035983671601__the_runway_wdM8BG';
 
 const SECTION_INLINE_STYLE: React.CSSProperties = {
-  '--rw-c-stage': '#fff9fc',
-  '--rw-c-panel': '#ffffff',
-  '--rw-c-text': '#14111f',
-  '--rw-c-muted': '#695e7a',
-  '--rw-c-accent': '#ff1f7a',
-  '--rw-c-on-accent': '#ffffff',
-  '--rw-c-line': '#f0d3e4',
-  '--rw-card': '#DFDFDF',
+  '--rw-c-stage': '#f6f2ec',
+  '--rw-c-panel': '#fdfbf8',
+  '--rw-c-text': '#171513',
+  '--rw-c-muted': '#6b635b',
+  '--rw-c-accent': '#9a7b4f',
+  '--rw-c-on-accent': '#fdfbf8',
+  '--rw-c-line': '#e5ddd2',
+  '--rw-card': '#ece6dc',
   '--rw-hf': 'var(--font-heading--family, inherit)',
   '--rw-hw': '400',
   '--rw-h-d': '46px',
@@ -69,12 +76,31 @@ const SECTION_INLINE_STYLE: React.CSSProperties = {
 } as React.CSSProperties;
 
 export default function App() {
+  const [currency, setCurrencyState] = useState<CurrencyCode>(() => getCurrency());
+  const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     registerRunwayCustomElement();
     const cleanupBag = initBagDialogBindings();
+    const unsubCurrency = subscribeCurrency((next) => {
+      setCurrencyState(next);
+    });
     return () => {
       cleanupBag();
+      unsubCurrency();
     };
+  }, []);
+
+  const handleCurrencyChange = useCallback((next: CurrencyCode) => {
+    setCurrency(next);
+    setCurrencyState(next);
+  }, []);
+
+  const toggleItemDetails = useCallback((detailKey: string) => {
+    setExpandedDetails((prev) => ({
+      ...prev,
+      [detailKey]: !prev[detailKey],
+    }));
   }, []);
 
   const handlePerfumeAddToCart = useCallback(
@@ -114,27 +140,49 @@ export default function App() {
 
         <nav aria-label="Main navigation">
           <a href="#runway-home" aria-current="page">
-            Runway
+            Menswear Runway
           </a>
-          <a href="#the-rail">The Rail</a>
-          <a href="#the-rail">All Products</a>
+          <a href="#the-rail">Abaya Rail</a>
+          <a href="#perfume-showroom-v5">Perfume Gallery</a>
           <a href="#site-footer">About</a>
         </nav>
 
-        <button id="open-bag" type="button" aria-label="Open styling bag">
-          <svg
-            width={22}
-            height={24}
-            viewBox="0 0 24 26"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            aria-hidden="true"
-          >
-            <path d="M4 8h16l1 16H3L4 8zM8 8V6a4 4 0 0 1 8 0v2" />
-          </svg>
-          <span data-cart-count="">3</span>
-        </button>
+        <div className="header-actions">
+          <div className="currency-toggle" role="group" aria-label="Currency selector">
+            <button
+              type="button"
+              className={`currency-toggle__btn${currency === 'USD' ? ' is-active' : ''}`}
+              aria-pressed={currency === 'USD'}
+              onClick={() => handleCurrencyChange('USD')}
+            >
+              USD
+            </button>
+            <span className="currency-toggle__sep" aria-hidden="true">/</span>
+            <button
+              type="button"
+              className={`currency-toggle__btn${currency === 'PKR' ? ' is-active' : ''}`}
+              aria-pressed={currency === 'PKR'}
+              onClick={() => handleCurrencyChange('PKR')}
+            >
+              PKR
+            </button>
+          </div>
+
+          <button id="open-bag" type="button" aria-label="Open styling bag">
+            <svg
+              width={22}
+              height={24}
+              viewBox="0 0 24 26"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              aria-hidden="true"
+            >
+              <path d="M4 8h16l1 16H3L4 8zM8 8V6a4 4 0 0 1 8 0v2" />
+            </svg>
+            <span data-cart-count="">3</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Content: Section 1 (Runway Hero) + Section 2 (The Rail All Products Section) */}
@@ -170,9 +218,9 @@ export default function App() {
               <div className="rw__left">
                 <div className="rw__head">
                   <div className="rw__intro">
-                    <h2 className="rw__title">Try the Look.</h2>
+                    <h2 className="rw__title">Modest Menswear.</h2>
                     <p className="rw__sub">
-                      Six looks, styled head to toe. Tap a pin to see the piece.
+                      Six tailored kurta ensembles, synced piece by piece.
                     </p>
                   </div>
                   <span
@@ -461,7 +509,7 @@ export default function App() {
                   <div className="rw__panel-head">
                     <h3 className="rw__panel-title">In this look</h3>
                     <span className="rw__label" data-rw-pieces="">
-                      3 pieces
+                      {LOOKS[0].piecesLabel}
                     </span>
                   </div>
 
@@ -521,9 +569,36 @@ export default function App() {
                                 <a className="rw__name" href={product.url}>
                                   {product.name}
                                 </a>
-                                <span className="rw__price">
-                                  <span>{product.priceFormatted}</span>
-                                </span>
+                                <div className="rw__price-row">
+                                  <span className="rw__price">
+                                    <span>{formatPrice(product.price, currency)}</span>
+                                  </span>
+                                  {product.details && (
+                                    <button
+                                      type="button"
+                                      className="rw__more-btn"
+                                      aria-expanded={Boolean(
+                                        expandedDetails[`${look.key}-${itemCfg.cardNumber}`]
+                                      )}
+                                      onClick={() =>
+                                        toggleItemDetails(`${look.key}-${itemCfg.cardNumber}`)
+                                      }
+                                    >
+                                      {expandedDetails[`${look.key}-${itemCfg.cardNumber}`]
+                                        ? 'Hide details'
+                                        : 'View details'}
+                                    </button>
+                                  )}
+                                </div>
+                                {product.details &&
+                                  expandedDetails[`${look.key}-${itemCfg.cardNumber}`] && (
+                                    <div className="rw__more-body">
+                                      <p>{product.details}</p>
+                                      {product.care && (
+                                        <span className="rw__more-care">{product.care}</span>
+                                      )}
+                                    </div>
+                                  )}
                               </div>
 
                               <button
@@ -598,7 +673,7 @@ export default function App() {
                                   <div className="rw__picker-meta">
                                     <span className="rw__picker-title">{product.name}</span>
                                     <span className="rw__picker-price">
-                                      {product.priceFormatted}
+                                      {formatPrice(product.price, currency)}
                                     </span>
                                   </div>
                                   <button
@@ -680,18 +755,20 @@ export default function App() {
                           <div className="rw__bundle-copy">
                             <span className="rw__bundle-title">Complete the look</span>
                             <span className="rw__bundle-note">
-                              Bundle all 3 and save 10%
+                              {look.items.length === 2
+                                ? 'Bundle both pieces and save 10%'
+                                : `Bundle all ${look.items.length} pieces and save 10%`}
                             </span>
                           </div>
                           <div className="rw__bundle-price">
-                            <s>{look.compareAtPrice}</s>
-                            <strong>{look.bundlePrice}</strong>
+                            <s>{formatPrice(look.compareAtAmount, currency)}</s>
+                            <strong>{formatPrice(look.bundleAmount, currency)}</strong>
                           </div>
                         </div>
                         <button type="button" className="rw__cta" data-rw-all="">
                           <span className="rw__cta-add">Add full look to bag</span>
                           <span className="rw__cta-m">
-                            Add full look — {look.bundlePrice}
+                            Add full look — {formatPrice(look.bundleAmount, currency)}
                           </span>
                           <span className="rw__cta-done">Full look in your bag</span>
                           <svg
@@ -736,13 +813,14 @@ export default function App() {
           </div>
         )}
 
-        {/* Section 2: "The Rail" — All Products Curved Rail Section */}
-        <RailSection />
+        {/* Section 2: "The Rail" — Infinite Looping Abaya & Outerwear Rail */}
+        <RailSection currency={currency} />
 
         {/* Section 3: "The Perfume Showroom" — Interactive 5-Bottle Scent Gallery */}
         <PerfumeShowroom
           onAddToCart={handlePerfumeAddToCart}
           bagTargetSelector="#open-bag"
+          money={(amount: number) => formatPrice(amount, currency)}
         />
       </main>
 
@@ -757,12 +835,14 @@ export default function App() {
           />
           <span className="site-footer__name">K.Shop Pop</span>
           <span aria-hidden="true">·</span>
-          <span>Youthful Streetwear &amp; Tailored Rail Curation</span>
+          <span>Modest Menswear Runway, Abaya Rail &amp; Scent Gallery</span>
         </div>
         <div className="site-footer__links">
           <a href="#runway-home">Runway</a>
           <span aria-hidden="true">·</span>
-          <a href="#the-rail">The Rail</a>
+          <a href="#the-rail">Abaya Rail</a>
+          <span aria-hidden="true">·</span>
+          <a href="#perfume-showroom-v5">Perfume Gallery</a>
           <span aria-hidden="true">·</span>
           <span>© {new Date().getFullYear()} K.Shop Pop. All rights reserved.</span>
         </div>
@@ -804,7 +884,7 @@ export default function App() {
         <div className="drawer-footer">
           <div className="drawer-total-row">
             <span>Estimated total</span>
-            <strong id="bag-total">$2,070.00</strong>
+            <strong id="bag-total">$545.00</strong>
           </div>
           <p className="drawer-tax-note">
             Taxes and shipping calculated at checkout.
