@@ -242,60 +242,22 @@ export default function App() {
                 >
                   {/* Queue bodies 0..5 (script clones 6..11) */}
                   <div className="rw__actors" data-rw-actors="">
-                    {LOOKS.map((look) => (
-                      <div
-                        key={`model-${look.index}`}
-                        className="rw__model"
-                        data-rw-model=""
-                        data-index={String(look.index)}
-                        aria-hidden="true"
-                      >
-                        <span className="rw__shadow" />
+                    {LOOKS.map((look) => {
+                      const isFirst = look.index === 0;
+                      const srcSetStr = `${look.model640} 640w, ${look.model1080} 1080w`;
+                      const sizesStr =
+                        '(min-width: 1800px) 540px, (min-width: 750px) 420px, 320px';
+                      return (
                         <div
-                          className="rw__figure"
-                          style={{ '--rw-ar': '0.5625' } as React.CSSProperties}
+                          key={`model-${look.index}`}
+                          className="rw__model"
+                          data-rw-model=""
+                          data-index={String(look.index)}
+                          aria-hidden="true"
+                          style={
+                            { '--rw-foot': look.footOffset.toFixed(4) } as React.CSSProperties
+                          }
                         >
-                          <div className="rw__art">
-                            <img
-                              src={look.model640}
-                              srcSet={`${look.model640} 640w, ${look.model1080} 1080w`}
-                              sizes="(min-width: 1800px) 540px, (min-width: 750px) 420px, 320px"
-                              loading="eager"
-                              decoding="async"
-                              width={1100}
-                              height={1956}
-                              draggable={false}
-                              data-model-image=""
-                              alt={look.name}
-                              referrerPolicy="no-referrer"
-                            />
-                            <button
-                              type="button"
-                              className="rw__hit"
-                              data-rw-go={String(look.index)}
-                              aria-label={`Look ${look.index + 1}: ${look.name}`}
-                              tabIndex={-1}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Heroes 0..5 */}
-                  <div className="rw__heroes" data-rw-heroes="">
-                    {LOOKS.map((look) => (
-                      <div
-                        key={`hero-${look.index}`}
-                        className={`rw__hero${look.index === 0 ? ' is-on' : ''}`}
-                        data-rw-hero=""
-                        data-index={String(look.index)}
-                        data-name={look.name}
-                        data-label={`Look ${look.index + 1}: ${look.name}`}
-                        data-probe={look.model640}
-                        aria-hidden={look.index === 0 ? 'false' : 'true'}
-                      >
-                        <div className="rw__morph">
                           <span className="rw__shadow" />
                           <div
                             className="rw__figure"
@@ -303,52 +265,140 @@ export default function App() {
                           >
                             <div className="rw__art">
                               <img
-                                src={look.model640}
-                                srcSet={`${look.model640} 640w, ${look.model1080} 1080w`}
-                                sizes="(min-width: 1800px) 540px, (min-width: 750px) 420px, 320px"
-                                loading="eager"
-                                decoding="async"
-                                width={1100}
-                                height={1956}
+                                {...(isFirst
+                                  ? {
+                                      src: look.model640,
+                                      srcSet: srcSetStr,
+                                      sizes: sizesStr,
+                                      loading: 'eager' as const,
+                                      decoding: 'sync' as const,
+                                      fetchPriority: 'high' as const,
+                                    }
+                                  : {
+                                      'data-rw-src': look.model640,
+                                      'data-rw-srcset': srcSetStr,
+                                      'data-rw-sizes': sizesStr,
+                                      loading: 'lazy' as const,
+                                      decoding: 'async' as const,
+                                    })}
+                                width={1080}
+                                height={1920}
                                 draggable={false}
                                 data-model-image=""
+                                data-look-index={String(look.index)}
                                 alt={look.name}
                                 referrerPolicy="no-referrer"
                               />
                               <button
                                 type="button"
-                                className="rw__zoom"
-                                data-rw-zoom=""
-                                aria-label={`View look: ${look.name}`}
-                                tabIndex={look.index === 0 ? 0 : -1}
+                                className="rw__hit"
+                                data-rw-go={String(look.index)}
+                                aria-label={`Look ${look.index + 1}: ${look.name}`}
+                                tabIndex={-1}
                               />
-                              <div className="rw__pins">
-                                {look.pins.map((pin) => (
-                                  <button
-                                    key={`pin-${look.index}-${pin.number}`}
-                                    type="button"
-                                    className="rw__pin"
-                                    data-rw-pin={String(pin.number)}
-                                    data-tip={pin.productName}
-                                    style={
-                                      {
-                                        left: pin.left,
-                                        top: pin.top,
-                                        '--pi': pin.number,
-                                      } as React.CSSProperties
-                                    }
-                                    aria-label={`${pin.number}: ${pin.productName}`}
-                                    tabIndex={-1}
-                                  >
-                                    <span className="rw__pin-dot">{pin.number}</span>
-                                  </button>
-                                ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Heroes 0..5 */}
+                  <div className="rw__heroes" data-rw-heroes="">
+                    {LOOKS.map((look) => {
+                      const isFirst = look.index === 0;
+                      const srcSetStr = `${look.model640} 640w, ${look.model1080} 1080w`;
+                      const sizesStr =
+                        '(min-width: 1800px) 540px, (min-width: 750px) 420px, 320px';
+                      return (
+                        <div
+                          key={`hero-${look.index}`}
+                          className={`rw__hero${isFirst ? ' is-on' : ''}`}
+                          data-rw-hero=""
+                          data-index={String(look.index)}
+                          data-name={look.name}
+                          data-label={`Look ${look.index + 1}: ${look.name}`}
+                          data-foot={look.footOffset.toFixed(4)}
+                          aria-hidden={isFirst ? 'false' : 'true'}
+                          style={
+                            { '--rw-foot': look.footOffset.toFixed(4) } as React.CSSProperties
+                          }
+                        >
+                          <div className="rw__morph">
+                            <span className="rw__shadow" />
+                            <div
+                              className="rw__figure"
+                              style={{ '--rw-ar': '0.5625' } as React.CSSProperties}
+                            >
+                              <div className="rw__art">
+                                <img
+                                  {...(isFirst
+                                    ? {
+                                        src: look.model640,
+                                        srcSet: srcSetStr,
+                                        sizes: sizesStr,
+                                        loading: 'eager' as const,
+                                        decoding: 'sync' as const,
+                                        fetchPriority: 'high' as const,
+                                      }
+                                    : {
+                                        'data-rw-src': look.model640,
+                                        'data-rw-srcset': srcSetStr,
+                                        'data-rw-sizes': sizesStr,
+                                        loading: 'lazy' as const,
+                                        decoding: 'async' as const,
+                                      })}
+                                  width={1080}
+                                  height={1920}
+                                  draggable={false}
+                                  data-model-image=""
+                                  data-look-index={String(look.index)}
+                                  alt={look.name}
+                                  referrerPolicy="no-referrer"
+                                />
+                                <button
+                                  type="button"
+                                  className="rw__zoom"
+                                  data-rw-zoom=""
+                                  aria-label={`View look: ${look.name}`}
+                                  tabIndex={isFirst ? 0 : -1}
+                                />
+                                <div className="rw__pins">
+                                  {look.pins.map((pin) => (
+                                    <button
+                                      key={`pin-${look.index}-${pin.number}`}
+                                      type="button"
+                                      className="rw__pin"
+                                      data-rw-pin={String(pin.number)}
+                                      data-tip={pin.productName}
+                                      style={
+                                        {
+                                          left: pin.left,
+                                          top: pin.top,
+                                          '--pi': pin.number,
+                                        } as React.CSSProperties
+                                      }
+                                      aria-label={`${pin.number}: ${pin.productName}`}
+                                      tabIndex={-1}
+                                    >
+                                      <span className="rw__pin-dot">{pin.number}</span>
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
+                  </div>
+
+                  {/* Subtle studio loading veil until first visible model is decoded */}
+                  <div className="rw__loader" data-rw-loader="" aria-hidden="true">
+                    <div className="rw__loader-figure">
+                      <span className="rw__loader-glow" />
+                      <span className="rw__loader-line" />
+                    </div>
                   </div>
 
                   {/* Light sweep */}
@@ -554,7 +604,8 @@ export default function App() {
                               >
                                 <img
                                   src={product.image}
-                                  loading="lazy"
+                                  loading={look.index === 0 ? 'eager' : 'lazy'}
+                                  fetchPriority={look.index === 0 ? 'high' : 'auto'}
                                   decoding="async"
                                   alt=""
                                   width={product.naturalWidth}

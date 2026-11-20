@@ -13,7 +13,13 @@ import {
   stepSpring,
 } from './runwayMath';
 import { RAIL_GARMENTS } from '../data/railData';
+import { LOOKS, PRODUCTS_MAP } from '../data/catalogData';
 import { formatPrice, getCurrency, subscribeCurrency } from './currency';
+import {
+  getRunwayAssetCache,
+  getRunwayLoadPlan,
+  selectOptimalModelUrl,
+} from './runwayAssets';
 
 const DEFAULT_STARTING_BAG: BagEntry[] = [
   { id: 6101002, quantity: 1 }, // Al-Noor White Embroidered Kurta Set (M)
@@ -437,8 +443,8 @@ export class RunwaySectionElement extends HTMLElement {
       const clone = srcModel.cloneNode(true) as HTMLElement;
       clone.setAttribute('data-rw-clone', '');
       clone.setAttribute('data-index', String(a));
-      const img = clone.querySelector('img');
-      if (img) {
+      const img = clone.querySelector<HTMLImageElement>('img[data-model-image]');
+      if (img && a % n !== 0) {
         img.loading = 'lazy';
       }
       actorsWrap.appendChild(clone);
@@ -449,66 +455,154 @@ export class RunwaySectionElement extends HTMLElement {
     const ticks = Array.from(this.querySelectorAll<HTMLButtonElement>('[data-rw-tick]'));
     const panels = Array.from(this.querySelectorAll<HTMLElement>('[data-rw-panel]'));
 
-    // Decode all model images
-    const decodeImg = (img: HTMLImageElement) => {
-      const markDecoded = () => img.classList.add('is-decoded');
-      if (typeof img.decode === 'function') {
-        img.decode().then(markDecoded).catch(() => {
-          if (img.complete) markDecoded();
-          else {
-            img.addEventListener('load', markDecoded, { once: true });
-            img.addEventListener('error', markDecoded, { once: true });
-          }
-        });
-      } else if (img.complete) {
-        markDecoded();
-      } else {
-        img.addEventListener('load', markDecoded, { once: true });
-        img.addEventListener('error', markDecoded, { once: true });
+    // Prioritized asset cache + staged loading pipeline:
+    // 1. Active/first visible model loads immediately with high fetchPriority.
+    // 2. Once first visible model is decoded, reveal smoothly (dismiss .rw__loader)
+    //    and preload the next two models (`index + 1`, `index + 2`).
+    // 3. Lazy-load remaining models during idle or immediately on navigation.
+    const assetCache = getRunwayAssetCache();
+    let firstHeroReady = false;
+    let loadEpoch = 0;
+    let idleHandle: number | null = null;
+    let lazyFallbackTimer: number | null = null;
+    let disposed = false;
+
+    const cancelPendingLazy = () => {
+      if (idleHandle !== null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleHandle);
+        idleHandle = null;
+      }
+      if (lazyFallbackTimer !== null) {
+        window.clearTimeout(lazyFallbackTimer);
+        lazyFallbackTimer = null;
       }
     };
 
-    this.querySelectorAll<HTMLImageElement>('img[data-model-image]').forEach(decodeImg);
+    const getLookModelImgs = (lookIdx: number): HTMLImageElement[] => {
+      return Array.from(
+        this.querySelectorAll<HTMLImageElement>(
+          `img[data-model-image][data-look-index="${lookIdx}"]`
+        )
+      );
+    };
 
-    // Feet detection on each hero's data-probe
-    heroes.forEach((hero, lookIdx) => {
-      const probeUrl = hero.getAttribute('data-probe');
-      if (!probeUrl) return;
-      const probeImg = new Image();
-      probeImg.crossOrigin = 'anonymous';
-      probeImg.onload = () => {
-        try {
-          const cw = 48;
-          const ch = Math.max(1, Math.round((probeImg.naturalHeight / probeImg.naturalWidth) * cw));
-          const canvas = document.createElement('canvas');
-          canvas.width = cw;
-          canvas.height = ch;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          ctx.drawImage(probeImg, 0, 0, cw, ch);
-          const data = ctx.getImageData(0, 0, cw, ch).data;
-          let lastRow = ch - 1;
-          outer: for (let r = ch - 1; r >= 0; r--) {
-            for (let c = 0; c < cw; c++) {
-              if (data[(r * cw + c) * 4 + 3] > 40) {
-                lastRow = r;
-                break outer;
-              }
-            }
-          }
-          const footOffset = clamp((ch - 1 - lastRow) / ch, 0, 0.4);
-          const footStr = footOffset.toFixed(4);
-          hero.style.setProperty('--rw-foot', footStr);
-          allModels.forEach((m, bIdx) => {
-            if (bIdx % n === lookIdx) {
-              m.style.setProperty('--rw-foot', footStr);
-            }
-          });
-        } catch {
-          // Tainted canvas or security error: silently keep offset 0
+    const warmLookProducts = (lookIdx: number) => {
+      const look = LOOKS[lookIdx];
+      if (!look) return;
+      for (const itemCfg of look.items) {
+        const product = PRODUCTS_MAP[itemCfg.productId];
+        if (product?.image) {
+          void assetCache.preloadUrl(product.image, 'low');
         }
+      }
+    };
+
+    const hydrateLook = (
+      lookIdx: number,
+      fetchPriority: 'high' | 'low' | 'auto'
+    ): Promise<void> => {
+      const look = LOOKS[lookIdx];
+      const imgs = getLookModelImgs(lookIdx);
+      const optimalUrl = look
+        ? selectOptimalModelUrl(
+            look.model640,
+            look.model1080,
+            window.innerWidth,
+            window.devicePixelRatio || 1
+          )
+        : '';
+
+      const tasks: Promise<void>[] = imgs.map((img) =>
+        assetCache.hydrateModelImg(img, lookIdx, fetchPriority)
+      );
+      if (optimalUrl) {
+        tasks.push(assetCache.preloadUrl(optimalUrl, fetchPriority, lookIdx));
+      }
+
+      return Promise.all(tasks).then(() => undefined);
+    };
+
+    const markFirstHeroReady = () => {
+      if (firstHeroReady || disposed) return;
+      firstHeroReady = true;
+      this.classList.add('is-hero-ready');
+      kick();
+      if (this.getAttribute('data-autoplay') === 'true' && !reducedMotion && !engaged && !playing) {
+        play(true);
+      }
+    };
+
+    const scheduleLazyQueue = (lazyIndices: number[], epoch: number) => {
+      if (disposed || epoch !== loadEpoch || lazyIndices.length === 0) return;
+
+      const nextIdx = lazyIndices[0];
+      const rest = lazyIndices.slice(1);
+
+      const runOne = () => {
+        idleHandle = null;
+        lazyFallbackTimer = null;
+        if (disposed || epoch !== loadEpoch) return;
+        if (assetCache.isLookReady(nextIdx)) {
+          hydrateLook(nextIdx, 'low').then(() => scheduleLazyQueue(rest, epoch));
+          return;
+        }
+        hydrateLook(nextIdx, 'low').then(() => {
+          warmLookProducts(nextIdx);
+          scheduleLazyQueue(rest, epoch);
+        });
       };
-      probeImg.src = probeUrl;
+
+      if (typeof window.requestIdleCallback === 'function') {
+        idleHandle = window.requestIdleCallback(runOne, { timeout: 1400 });
+      } else {
+        lazyFallbackTimer = window.setTimeout(runOne, 450);
+      }
+    };
+
+    const scheduleWindowForIndex = (activeIdx: number) => {
+      cancelPendingLazy();
+      const epoch = ++loadEpoch;
+      const plan = getRunwayLoadPlan(activeIdx, n);
+
+      // Priority 1: Active visible model
+      const activeReadyPromise = hydrateLook(plan.priority, 'high');
+      warmLookProducts(plan.priority);
+
+      const runNextTiers = () => {
+        if (disposed || epoch !== loadEpoch) return;
+        markFirstHeroReady();
+
+        // Priority 2: Preload next two models immediately after primary model is ready
+        const preloadTasks = plan.preload.map((idx) => {
+          warmLookProducts(idx);
+          return hydrateLook(idx, 'auto');
+        });
+
+        // Priority 3: Lazy-load remaining models only after preload tier settles
+        Promise.all(preloadTasks).then(() => {
+          if (disposed || epoch !== loadEpoch) return;
+          scheduleLazyQueue(plan.lazy, epoch);
+        });
+      };
+
+      if (assetCache.isLookReady(plan.priority)) {
+        runNextTiers();
+      } else {
+        activeReadyPromise.then(runNextTiers);
+      }
+    };
+
+    // Apply precomputed foot offsets synchronously (zero probe network requests & zero CLS)
+    heroes.forEach((hero, lookIdx) => {
+      const staticFoot = hero.getAttribute('data-foot');
+      if (staticFoot) {
+        hero.style.setProperty('--rw-foot', staticFoot);
+        allModels.forEach((m, bIdx) => {
+          if (bIdx % n === lookIdx) {
+            m.style.setProperty('--rw-foot', staticFoot);
+          }
+        });
+      }
     });
 
     // Initialize option pickers on all cards
@@ -1111,7 +1205,7 @@ export class RunwaySectionElement extends HTMLElement {
       figClone.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
         img.loading = 'eager';
         img.sizes = `${Math.round(h * 0.5625)}px`;
-        decodeImg(img);
+        void assetCache.hydrateModelImg(img, index, 'high');
       });
 
       const word = lb.getAttribute('data-word') || 'Look';
@@ -1264,6 +1358,7 @@ export class RunwaySectionElement extends HTMLElement {
     const setIndex = (newIdx: number, silent = false) => {
       const prevIdx = index;
       index = wrapN(newIdx, n);
+      scheduleWindowForIndex(index);
       updateAccessibilityRanks();
       kick();
 
@@ -1940,14 +2035,13 @@ export class RunwaySectionElement extends HTMLElement {
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
-    // Initial calls
+    // Initial calls (autoplay begins once first visible model is decoded)
     measure();
     setIndex(0, true);
-    if (this.getAttribute('data-autoplay') === 'true' && !reducedMotion) {
-      play(true);
-    }
 
     this.cleanupFns.push(() => {
+      disposed = true;
+      cancelPendingLazy();
       if (rafId !== null) window.cancelAnimationFrame(rafId);
       if (autoTimer !== null) window.clearTimeout(autoTimer);
       if (resizeTimeout !== null) window.clearTimeout(resizeTimeout);

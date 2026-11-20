@@ -250,3 +250,45 @@ test('USD and PKR currency formatting converts consistently across Runway, Rail,
   setCurrency('USD');
   assert.equal(getCurrency(), 'USD');
 });
+
+test('Runway staged loading prioritizes active model, preloads next two, and lazy-loads remaining with in-memory caching', async () => {
+  const { getRunwayLoadPlan, selectOptimalModelUrl, RunwayAssetCache } = await import('./runwayAssets');
+
+  // Initial load at Look 0: Model 1 priority -> Models 2 & 3 preload -> remaining lazy (left flank 5 first)
+  const plan0 = getRunwayLoadPlan(0, 6);
+  assert.equal(plan0.priority, 0);
+  assert.deepEqual(plan0.preload, [1, 2]);
+  assert.deepEqual(plan0.lazy, [5, 3, 4]);
+
+  // Sliding window at Look 4 wraps circularly: 4 priority -> [5, 0] preload -> [3, 1, 2] lazy
+  const plan4 = getRunwayLoadPlan(4, 6);
+  assert.equal(plan4.priority, 4);
+  assert.deepEqual(plan4.preload, [5, 0]);
+  assert.deepEqual(plan4.lazy, [3, 1, 2]);
+
+  // Optimal responsive WebP selection matches srcset breakpoints
+  assert.equal(
+    selectOptimalModelUrl('/m-640.webp', '/m-1080.webp', 390, 1),
+    '/m-640.webp'
+  );
+  assert.equal(
+    selectOptimalModelUrl('/m-640.webp', '/m-1080.webp', 1440, 2),
+    '/m-1080.webp'
+  );
+
+  // Every look uses responsive WebP variants & exact precomputed footOffset
+  for (const look of LOOKS) {
+    assert.ok(look.model640.endsWith('-640.webp'), `${look.name} should use 640w WebP`);
+    assert.ok(look.model1080.endsWith('.webp'), `${look.name} should use 1080w WebP`);
+    assert.ok(look.footOffset > 0 && look.footOffset < 0.1, `${look.name} should have precomputed footOffset`);
+  }
+
+  // In-memory cache marks URLs & looks ready and deduplicates preloads
+  const cache = new RunwayAssetCache();
+  assert.equal(cache.isLookReady(0), false);
+  await cache.preloadUrl(LOOKS[0].model640, 'high', 0);
+  assert.equal(cache.isUrlCached(LOOKS[0].model640), true);
+  assert.equal(cache.isLookReady(0), true);
+  assert.equal(cache.getCachedUrlCount(), 1);
+});
+
