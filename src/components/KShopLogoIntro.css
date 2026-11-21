@@ -1,0 +1,65 @@
+/* K.Shop Pop native logo intro. Fully scoped: existing site CSS is untouched. */
+.kshop-intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: transparent;
+  overscroll-behavior: contain;
+}
+.kshop-intro-curtain {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50.15%;
+  background: #ffffff;
+  pointer-events: none;
+  will-change: transform;
+}
+.kshop-intro-curtain--left { left: 0; }
+.kshop-intro-curtain--right { right: 0; }
+.kshop-intro-logo {
+  position: relative;
+  z-index: 2;
+  width: clamp(210px, 34vw, 370px);
+  aspect-ratio: 540 / 450;
+  pointer-events: none;
+  will-change: opacity;
+  transform: translateZ(0);
+}
+.kshop-intro-logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.kshop-intro-skip {
+  position: absolute;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 3;
+  padding: 10px 17px;
+  background: #ffffff;
+  color: #666666;
+  border: 1px solid #dedede;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.kshop-intro-skip:focus-visible {
+  outline: 2px solid #222222;
+  outline-offset: 4px;
+}
+@media (max-width: 700px) {
+  .kshop-intro-logo { width: min(68vw, 285px); }
+  .kshop-intro-skip { font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kshop-intro-overlay { display: none; }
+}
