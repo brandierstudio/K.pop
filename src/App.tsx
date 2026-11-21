@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import KShopLogoIntro from './components/KShopLogoIntro.jsx';
 import { LOOKS, PRODUCTS_MAP, findPerfumeVariantId, setProductImage } from './data/catalogData';
 import {
   registerRunwayCustomElement,
@@ -127,6 +128,7 @@ export default function App() {
 
   return (
     <div className="site-shell">
+      <KShopLogoIntro />
       {/* 1.1 Site Header: Logo icon mark only (no text in header logo side), zero external links */}
       <header className="site-header shopify-section-group-header-group">
         <a href="#runway-home" className="brand" aria-label="Runway home">
